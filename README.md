@@ -1,4 +1,4 @@
-# assignment1
+# eHadir project
 
 A new Flutter project.
 
