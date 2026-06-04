@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/auth_service.dart';
 import '../../theme.dart';
+import '../app_shell.dart';
 import '../booking/create_booking_screen.dart';
+import '../lecturer/ambil_kehadiran_screen.dart';
 import '../../utils/dialogs.dart';
 
 /// Pensyarah (Lecturer) Dashboard — the "shell" for teammates.
@@ -103,13 +105,28 @@ class PensyarahDashboardScreen extends ConsumerWidget {
                       onTap: () => _showPlaceholder(context, 5),
                     ),
 
-                    // ── Module 1: Ambil Kehadiran (Placeholder) ──
+                    // ═══ MODULE 1: AMBIL KEHADIRAN (ACTIVE) ═══
                     _MenuCard(
                       title: 'Ambil Kehadiran',
                       subtitle: 'Module 1',
                       icon: Icons.fact_check_rounded,
                       color: EHadirTheme.approved,
-                      onTap: () => _showPlaceholder(context, 1),
+                      isHighlighted: true,
+                      onTap: () {
+                        // Prefer switching the bottom-nav tab so the state
+                        // stays consistent with deep-links from the timetable.
+                        final shell =
+                            context.findAncestorStateOfType<AppShellState>();
+                        if (shell != null) {
+                          shell.navigateToTab(2);
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const AmbilKehadiranScreen()),
+                          );
+                        }
+                      },
                     ),
 
                     // ── Module 2: Lapor Disiplin (Placeholder) ──

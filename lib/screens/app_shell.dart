@@ -26,6 +26,7 @@ class AppShell extends ConsumerStatefulWidget {
 
 class AppShellState extends ConsumerState<AppShell> {
   int _currentIndex = 0;
+  String? _attendanceSlotId;
 
   void navigateToTab(int index) {
     if (index >= 0 && index < _buildScreens().length) {
@@ -35,7 +36,8 @@ class AppShellState extends ConsumerState<AppShell> {
 
   void navigateToAttendanceTab(String slotId) {
     setState(() {
-      _currentIndex = 2; // Assuming Kehadiran is index 2
+      _attendanceSlotId = slotId;
+      _currentIndex = 2;
     });
   }
 
@@ -63,7 +65,10 @@ class AppShellState extends ConsumerState<AppShell> {
     return [
       utama,
       MyTimetableScreen(onTakeAttendance: navigateToAttendanceTab), // Jadual
-      const AmbilKehadiranScreen(), // Kehadiran
+      AmbilKehadiranScreen(
+        key: ValueKey(_attendanceSlotId ?? 'attendance-tab'),
+        initialSlotId: _attendanceSlotId,
+      ), // Kehadiran
       const LaporDisiplinScreen(), // Laporan
       const ProfileScreen(), // Profil
     ];
