@@ -196,10 +196,19 @@ class FirestoreBookingService extends ChangeNotifier {
 
   /// Real-time stream of all bookings for a specific lecturer.
   /// Used by WeeklyTimetableScreen to overlay replacement bookings on the grid.
+  ///
+  /// Only fetches bookings from the **start of the current week** onwards so
+  /// that past replacement sessions do not appear on the weekly grid.
   Stream<List<FirestoreBooking>> streamBookingsForLecturer(String lecturerId) {
+    // Compute Monday of the current week at midnight.
+    final now = DateTime.now();
+    final monday = DateTime(now.year, now.month, now.day - (now.weekday - 1));
+    final weekStartTs = Timestamp.fromDate(monday);
+
     return _db
         .collection(_collection)
         .where('lecturerId', isEqualTo: lecturerId)
+        .where('date', isGreaterThanOrEqualTo: weekStartTs)
         .snapshots()
         .map((snap) {
           final list = snap.docs.map(FirestoreBooking.fromFirestore).toList();
@@ -358,10 +367,16 @@ class FirestoreBookingService extends ChangeNotifier {
   }
 
   /// Real-time stream of class slots for a specific lecturer.
+  /// Only returns slots from **today onwards** so that past replacement
+  /// sessions are automatically hidden from the Jadual Saya card list.
   Stream<List<ClassSlotModel>> streamClassSlotsForLecturer(String lecturerId) {
+    final todayTs = Timestamp.fromDate(
+      DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
+    );
     return _db
         .collection(_classSlots)
         .where('lecturerId', isEqualTo: lecturerId)
+        .where('date', isGreaterThanOrEqualTo: todayTs)
         .snapshots()
         .map((snap) {
           final list = snap.docs.map(ClassSlotModel.fromFirestore).toList();
@@ -371,10 +386,15 @@ class FirestoreBookingService extends ChangeNotifier {
   }
 
   /// Real-time stream of class slots for a specific program.
+  /// Only returns slots from **today onwards**.
   Stream<List<ClassSlotModel>> streamClassSlotsForProgram(String program) {
+    final todayTs = Timestamp.fromDate(
+      DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
+    );
     return _db
         .collection(_classSlots)
         .where('program', isEqualTo: program)
+        .where('date', isGreaterThanOrEqualTo: todayTs)
         .snapshots()
         .map((snap) {
           final list = snap.docs.map(ClassSlotModel.fromFirestore).toList();

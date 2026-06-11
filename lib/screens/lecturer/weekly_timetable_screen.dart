@@ -8,31 +8,54 @@ import '../../services/curriculum_service.dart';
 import '../../theme.dart';
 import 'ambil_kehadiran_screen.dart';
 
-/// Pensyarah view of the weekly timetable laid out in the IKM "STUDENT'S TIME
-/// TABLE" grid: 5 rows (Mon-Fri) × 9 columns (period 1..9). Mirrors the DED 1A
-/// PDF template.
+import 'package:intl/intl.dart';
+
+/// Pensyarah view of the weekly timetable: 5 rows (Mon-Fri) × 9 columns
+/// (period 1..9). Overlays Module 6 replacement bookings in amber.
 ///
-/// Also overlays Module 6 replacement bookings (from the `bookings` collection)
-/// on the same grid, rendered in a distinct amber/orange colour so lecturers
-/// can see their own replacement sessions alongside their scheduled classes.
-class WeeklyTimetableScreen extends ConsumerWidget {
+/// Now includes week navigation (< >) so lecturers can browse past and
+/// future weeks. Replacement bookings are scoped to the specific week
+/// being displayed — a June 17th booking only appears in the June 16–20
+/// week and automatically disappears in all other weeks.
+class WeeklyTimetableScreen extends ConsumerStatefulWidget {
   const WeeklyTimetableScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<WeeklyTimetableScreen> createState() =>
+      _WeeklyTimetableScreenState();
+}
+
+class _WeeklyTimetableScreenState extends ConsumerState<WeeklyTimetableScreen> {
+  /// Offset from the current week. 0 = this week, -1 = last week, +1 = next.
+  int _weekOffset = 0;
+
+  /// Compute Monday of the displayed week.
+  DateTime get _weekStart {
+    final now = DateTime.now();
+    final monday = DateTime(now.year, now.month, now.day - (now.weekday - 1));
+    return monday.add(Duration(days: _weekOffset * 7));
+  }
+
+  DateTime get _weekEnd => _weekStart.add(const Duration(days: 4)); // Friday
+
+  @override
+  Widget build(BuildContext context) {
     final user       = ref.watch(authProvider).currentUser!;
     final curriculum = ref.read(curriculumServiceProvider);
     final bookingSvc = ref.read(firestoreBookingProvider);
+    final fmt        = DateFormat('dd MMM');
+    final isThisWeek = _weekOffset == 0;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Jadual Mingguan"),
+        title: const Text('Jadual Mingguan'),
       ),
-      // Combine two streams: regular timetable + replacement bookings
       body: StreamBuilder<List<TimetableEntry>>(
         stream: curriculum.streamEntriesForLecturer(user.id),
         builder: (ctx, ttSnap) {
           return StreamBuilder<List<FirestoreBooking>>(
+            // streamBookingsForLecturer already filters from this week onward;
+            // we additionally filter in the grid to the exact displayed week.
             stream: bookingSvc.streamBookingsForLecturer(user.id),
             builder: (ctx2, bookSnap) {
               if (ttSnap.connectionState == ConnectionState.waiting ||
@@ -40,29 +63,134 @@ class WeeklyTimetableScreen extends ConsumerWidget {
                 return const Center(child: CircularProgressIndicator());
               }
               final entries  = ttSnap.data  ?? const <TimetableEntry>[];
-              final bookings = bookSnap.data ?? const <FirestoreBooking>[];
+              final allBookings = bookSnap.data ?? const <FirestoreBooking>[];
+
+              // ── KEY FIX: Only keep bookings whose exact date falls within
+              // the Monday–Friday range of the currently displayed week.
+              final weekStart = _weekStart;
+              final weekEnd   = _weekEnd;
+              final bookings  = allBookings.where((b) {
+                final d = DateTime(b.date.year, b.date.month, b.date.day);
+                return !d.isBefore(weekStart) && !d.isAfter(weekEnd);
+              }).toList();
+
               return Column(
                 children: [
                   _Header(name: user.name, program: user.program),
-                  // Legend
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+
+                  // ── Week Navigator Bar ──
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: EHadirTheme.surfaceLight,
+                      borderRadius:
+                          BorderRadius.circular(EHadirTheme.radiusMd),
+                      border: Border.all(color: EHadirTheme.divider),
+                    ),
                     child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _LegendDot(color: EHadirTheme.primary, label: 'Jadual Biasa'),
-                        const SizedBox(width: 16),
-                        _LegendDot(color: const Color(0xFFF59E0B), label: 'Bilik Gantian'),
+                        // Back arrow
+                        IconButton(
+                          icon: const Icon(
+                              Icons.chevron_left_rounded,
+                              color: EHadirTheme.primary),
+                          onPressed: () =>
+                              setState(() => _weekOffset--),
+                          tooltip: 'Minggu sebelumnya',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+
+                        // Week label
+                        Column(
+                          children: [
+                            Text(
+                              isThisWeek
+                                  ? 'Minggu Ini'
+                                  : _weekOffset < 0
+                                      ? 'Minggu Lepas (${_weekOffset.abs()} minggu lalu)'
+                                      : 'Minggu Hadapan ($_weekOffset minggu akan datang)',
+                              style: const TextStyle(
+                                color: EHadirTheme.textSecondary,
+                                fontSize: 11,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${fmt.format(weekStart)} – ${fmt.format(weekEnd)}',
+                              style: const TextStyle(
+                                color: EHadirTheme.textPrimary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        // Forward arrow
+                        IconButton(
+                          icon: const Icon(
+                              Icons.chevron_right_rounded,
+                              color: EHadirTheme.primary),
+                          onPressed: () =>
+                              setState(() => _weekOffset++),
+                          tooltip: 'Minggu seterusnya',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
                       ],
                     ),
                   ),
+
+                  // ── Legend ──
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 4),
+                    child: Row(
+                      children: [
+                        _LegendDot(
+                            color: EHadirTheme.primary,
+                            label: 'Jadual Biasa'),
+                        const SizedBox(width: 16),
+                        _LegendDot(
+                            color: const Color(0xFFF59E0B),
+                            label: 'Bilik Gantian'),
+                        if (bookings.isNotEmpty) ...[  
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEF3C7),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '${bookings.length} gantian minggu ini',
+                              style: const TextStyle(
+                                  color: Color(0xFF92400E),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  // ── Grid ──
                   Expanded(
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        padding:
+                            const EdgeInsets.fromLTRB(16, 0, 16, 24),
                         child: _TimetableGrid(
-                          entries:  entries,
-                          bookings: bookings,
+                          entries:   entries,
+                          bookings:  bookings,
+                          weekStart: weekStart,
                         ),
                       ),
                     ),
@@ -225,7 +353,14 @@ class _ClampedEntry {
 class _TimetableGrid extends StatelessWidget {
   final List<TimetableEntry>    entries;
   final List<FirestoreBooking>  bookings;
-  const _TimetableGrid({required this.entries, required this.bookings});
+  /// The Monday of the displayed week — used to compute exact dates for each
+  /// day column so we can show correct date labels.
+  final DateTime weekStart;
+  const _TimetableGrid({
+    required this.entries,
+    required this.bookings,
+    required this.weekStart,
+  });
 
   static const double _kDayColW  = 56;
   static const double _kPeriodW  = 130;
@@ -313,7 +448,7 @@ class _TimetableGrid extends StatelessWidget {
                 ),
             ],
           ),
-          // Day rows
+          // Day rows — now with date labels next to the day name
           for (final day in SchoolDay.values)
             Row(
               children: [
@@ -327,11 +462,26 @@ class _TimetableGrid extends StatelessWidget {
                       top: BorderSide(color: EHadirTheme.divider),
                     ),
                   ),
-                  child: Text(day.short,
-                      style: const TextStyle(
-                          color: EHadirTheme.textPrimary,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14)),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(day.short,
+                          style: const TextStyle(
+                              color: EHadirTheme.textPrimary,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13)),
+                      // Show the actual date for this day column
+                      Text(
+                        DateFormat('dd/MM').format(
+                          weekStart.add(Duration(days: day.index)),
+                        ),
+                        style: const TextStyle(
+                          color: EHadirTheme.textSecondary,
+                          fontSize: 9,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 ..._segmentsForDay(day)
                     .where((seg) => seg.span > 0)
