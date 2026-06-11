@@ -197,18 +197,13 @@ class FirestoreBookingService extends ChangeNotifier {
   /// Real-time stream of all bookings for a specific lecturer.
   /// Used by WeeklyTimetableScreen to overlay replacement bookings on the grid.
   ///
-  /// Only fetches bookings from the **start of the current week** onwards so
-  /// that past replacement sessions do not appear on the weekly grid.
+  /// Returns ALL bookings (no date filter) — date scoping is done client-side
+  /// in WeeklyTimetableScreen, which filters to the exact Mon–Fri range of
+  /// the displayed week. This allows the navigator to show past and future weeks.
   Stream<List<FirestoreBooking>> streamBookingsForLecturer(String lecturerId) {
-    // Compute Monday of the current week at midnight.
-    final now = DateTime.now();
-    final monday = DateTime(now.year, now.month, now.day - (now.weekday - 1));
-    final weekStartTs = Timestamp.fromDate(monday);
-
     return _db
         .collection(_collection)
         .where('lecturerId', isEqualTo: lecturerId)
-        .where('date', isGreaterThanOrEqualTo: weekStartTs)
         .snapshots()
         .map((snap) {
           final list = snap.docs.map(FirestoreBooking.fromFirestore).toList();
