@@ -57,6 +57,10 @@ class _AmbilKehadiranScreenState extends ConsumerState<AmbilKehadiranScreen> {
   String? _program;
   int _selectedWeek = 0; // 0-indexed (M1 = 0)
 
+  /// Guards the one-shot "default everyone present" seeding per (class × week).
+  String? _seededFor;
+  bool _seeding = false;
+
   @override
   void initState() {
     super.initState();
@@ -75,6 +79,38 @@ class _AmbilKehadiranScreenState extends ConsumerState<AmbilKehadiranScreen> {
       _studentClass != null &&
       _subjectCode!.isNotEmpty &&
       _studentClass!.isNotEmpty;
+
+  /// Marks every blank cell in the active week as "Hadir" so the grid opens
+  /// with all students present by default; the lecturer then toggles only the
+  /// absentees. Runs once per (class × week); other weeks are left untouched.
+  void _scheduleDefaultPresent(
+    AttendanceService attendance,
+    ClassAttendance current,
+    List<StudentModel> students,
+  ) {
+    if (students.isEmpty) return;
+    final key = '${_subjectCode}_${_studentClass}_$_selectedWeek';
+    if (_seededFor == key || _seeding) return;
+    final hasBlank = students.any((s) =>
+        current.statusFor(s.id, _selectedWeek) == AttendanceStatus.belum);
+    if (!hasBlank) {
+      _seededFor = key; // already complete — don't re-check on every rebuild
+      return;
+    }
+    _seeding = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      var updated = current;
+      for (final s in students) {
+        if (updated.statusFor(s.id, _selectedWeek) == AttendanceStatus.belum) {
+          updated =
+              updated.withCell(s.id, _selectedWeek, AttendanceStatus.hadir);
+        }
+      }
+      await attendance.saveClassAttendance(updated);
+      _seededFor = key;
+      _seeding = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +201,9 @@ class _AmbilKehadiranScreenState extends ConsumerState<AmbilKehadiranScreen> {
     final db = ref.watch(mockDbProvider);
     final auth = ref.watch(authProvider);
     final user = auth.currentUser!;
-    final attendance = ref.watch(attendanceServiceProvider);
+    // read (not watch): the StreamBuilder + Firestore already drive reactivity,
+    // so saves must NOT trigger a parent rebuild that re-subscribes the stream.
+    final attendance = ref.read(attendanceServiceProvider);
 
     final students = db.getStudentsForClass(
       _studentClass!,
@@ -178,6 +216,11 @@ class _AmbilKehadiranScreenState extends ConsumerState<AmbilKehadiranScreen> {
         studentClass: _studentClass!,
       ),
       builder: (ctx, snap) {
+        // Wait for the real document before rendering or seeding. Acting on the
+        // empty placeholder during load would overwrite previously-saved weeks.
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
         final ClassAttendance current = snap.data ??
             ClassAttendance.empty(
               subjectCode: _subjectCode!,
@@ -187,6 +230,10 @@ class _AmbilKehadiranScreenState extends ConsumerState<AmbilKehadiranScreen> {
               lecturerId: user.id,
               lecturerName: user.name,
             );
+
+        // Default every student to "Hadir" for the active week so no box is
+        // left blank — the lecturer only toggles the absentees afterwards.
+        _scheduleDefaultPresent(attendance, current, students);
 
         return Column(
           children: [
@@ -628,8 +675,9 @@ class _StatusCell extends StatelessWidget {
     required this.onCycle,
   });
 
+  // Tap cycle never lands on "belum" so the active week stays fully marked.
+  // (Long-press still exposes every status, incl. clearing, as an override.)
   static const _cycle = [
-    AttendanceStatus.belum,
     AttendanceStatus.hadir,
     AttendanceStatus.tidakHadir,
     AttendanceStatus.mc,
@@ -638,6 +686,7 @@ class _StatusCell extends StatelessWidget {
 
   AttendanceStatus _next(AttendanceStatus s) {
     final idx = _cycle.indexOf(s);
+    // Unknown/blank → start the cycle at Hadir.
     return _cycle[(idx + 1) % _cycle.length];
   }
 
