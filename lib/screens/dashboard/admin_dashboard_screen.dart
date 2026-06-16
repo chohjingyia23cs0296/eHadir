@@ -16,10 +16,21 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   List<AppUser> _users = [];
   bool _loading = true;
 
+  // Search + role filter (UX upgrade for scrolling long user lists).
+  final _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+  UserRole? _roleFilter; // null = show all roles
+
   @override
   void initState() {
     super.initState();
     _loadUsers();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUsers() async {
@@ -27,6 +38,26 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final auth = ref.read(authProvider);
     final users = await auth.fetchAllUsers();
     if (mounted) setState(() { _users = users; _loading = false; });
+  }
+
+  /// Returns users that match the active role filter AND the search query.
+  List<AppUser> get _filteredUsers {
+    final q = _searchQuery.trim().toLowerCase();
+    return _users.where((u) {
+      if (_roleFilter != null && u.role != _roleFilter) return false;
+      if (q.isEmpty) return true;
+      return u.name.toLowerCase().contains(q) ||
+          u.email.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  /// Per-role counts for the filter chip badges.
+  Map<UserRole?, int> get _roleCounts {
+    final counts = <UserRole?, int>{null: _users.length};
+    for (final role in UserRole.values) {
+      counts[role] = _users.where((u) => u.role == role).length;
+    }
+    return counts;
   }
 
   @override
@@ -102,6 +133,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             ),
           ),
 
+          // Search bar + role filter chips
+          if (!_loading && _users.isNotEmpty) _buildSearchAndFilter(),
+
           // User list
           Expanded(
             child: _loading
@@ -110,17 +144,99 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                     ? const Center(
                         child: Text('Tiada pengguna berdaftar.',
                             style: TextStyle(color: EHadirTheme.textSecondary)))
-                    : RefreshIndicator(
-                        onRefresh: _loadUsers,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-                          itemCount: _users.length,
-                          itemBuilder: (ctx, i) =>
-                              _buildUserTile(_users[i]),
-                        ),
-                      ),
+                    : _filteredUsers.isEmpty
+                        ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(24),
+                              child: Text(
+                                'Tiada pengguna sepadan dengan carian / tapisan.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    color: EHadirTheme.textSecondary),
+                              ),
+                            ),
+                          )
+                        : RefreshIndicator(
+                            onRefresh: _loadUsers,
+                            child: ListView.builder(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 0, 16, 40),
+                              itemCount: _filteredUsers.length,
+                              itemBuilder: (ctx, i) =>
+                                  _buildUserTile(_filteredUsers[i]),
+                            ),
+                          ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ─── Search + role filter UI ────────────────────────────
+
+  Widget _buildSearchAndFilter() {
+    final counts = _roleCounts;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Search bar
+          TextField(
+            controller: _searchCtrl,
+            onChanged: (v) => setState(() => _searchQuery = v),
+            decoration: InputDecoration(
+              hintText: 'Cari nama atau email...',
+              prefixIcon: const Icon(Icons.search_rounded,
+                  color: EHadirTheme.textSecondary, size: 20),
+              suffixIcon: _searchQuery.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      onPressed: () {
+                        _searchCtrl.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Role filter chips
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _roleChip(null, 'Semua', counts[null] ?? 0),
+                for (final role in UserRole.values)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: _roleChip(role, role.displayName, counts[role] ?? 0),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _roleChip(UserRole? role, String label, int count) {
+    final selected = _roleFilter == role;
+    final color = role == null ? EHadirTheme.primary : _roleColor(role);
+    return FilterChip(
+      label: Text('$label  ·  $count'),
+      selected: selected,
+      onSelected: (_) => setState(() => _roleFilter = role),
+      selectedColor: color.withValues(alpha: 0.15),
+      checkmarkColor: color,
+      side: BorderSide(color: selected ? color : EHadirTheme.divider),
+      labelStyle: TextStyle(
+        color: selected ? color : EHadirTheme.textPrimary,
+        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+        fontSize: 12,
       ),
     );
   }
