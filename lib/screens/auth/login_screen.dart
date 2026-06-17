@@ -104,7 +104,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Institut Kemahiran Mara, Johor Bahru',
+                      'Institut Kemahiran Mara,Johor Bahru',
                       style: TextStyle(
                         color: EHadirTheme.textSecondary.withValues(alpha: 0.7),
                         fontSize: 13,
