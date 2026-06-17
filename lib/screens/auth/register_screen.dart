@@ -69,8 +69,62 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         ),
       );
     } else {
-      // Success — pop back; AuthWrapper handles routing
-      if (mounted) Navigator.of(context).pop();
+      // Account created but pending admin approval — show dialog
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: EHadirTheme.card,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(EHadirTheme.radiusLg),
+            ),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: EHadirTheme.pending.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(EHadirTheme.radiusSm),
+                  ),
+                  child: const Icon(Icons.hourglass_top_rounded,
+                      color: EHadirTheme.pending, size: 22),
+                ),
+                const SizedBox(width: 12),
+                const Text('Permohonan Dihantar',
+                    style: TextStyle(
+                        color: EHadirTheme.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700)),
+              ],
+            ),
+            content: const Text(
+              'Akaun anda telah didaftarkan dan sedang menunggu kelulusan admin.\n\n'
+              'Anda akan dapat log masuk setelah admin meluluskan permohonan anda.',
+              style: TextStyle(
+                  color: EHadirTheme.textSecondary,
+                  fontSize: 14,
+                  height: 1.5),
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: EHadirTheme.accent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(EHadirTheme.radiusMd),
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.of(ctx).pop(); // close dialog
+                  Navigator.of(context).pop(); // return to login screen
+                },
+                child: const Text('Faham, Kembali ke Log Masuk',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+        );
+      }
     }
   }
 

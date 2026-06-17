@@ -81,6 +81,7 @@ class AppUser {
   final UserRole role;
   final String program;       // e.g. "DGS"
   final String passwordHash;  // sha256 hex or '••••••••' placeholder
+  final bool isApproved;      // false = pending admin approval
 
   AppUser({
     required this.id,
@@ -89,6 +90,7 @@ class AppUser {
     required this.role,
     this.program = '',
     this.passwordHash = '••••••••',
+    this.isApproved = true,   // default true keeps existing accounts active
   });
 
   // ─── Firestore ────────────────────────────────────────────
@@ -102,6 +104,7 @@ class AppUser {
       role: UserRoleExtension.fromString(d['role'] ?? 'pensyarah'),
       program: d['program'] ?? '',
       passwordHash: d['passwordHash'] ?? '••••••••',
+      isApproved: (d['isApproved'] as bool?) ?? true, // missing field → legacy account → approved
     );
   }
 
@@ -111,6 +114,7 @@ class AppUser {
         'role': role.name,
         'program': program,
         'passwordHash': passwordHash,
+        'isApproved': isApproved,
       };
 
   AppUser copyWith({
@@ -120,6 +124,7 @@ class AppUser {
     UserRole? role,
     String? program,
     String? passwordHash,
+    bool? isApproved,
   }) {
     return AppUser(
       id: id ?? this.id,
@@ -128,6 +133,7 @@ class AppUser {
       role: role ?? this.role,
       program: program ?? this.program,
       passwordHash: passwordHash ?? this.passwordHash,
+      isApproved: isApproved ?? this.isApproved,
     );
   }
 }
